@@ -149,11 +149,11 @@ class NeRFSystem(LightningModule):
                           batch_size=None,
                           pin_memory=True)
 
-    def val_dataloader(self):
-        return DataLoader(self.test_dataset,
-                          num_workers=8,
-                          batch_size=None,
-                          pin_memory=True)
+    # def val_dataloader(self):
+    #     return DataLoader(self.test_dataset,
+    #                       num_workers=8,
+    #                       batch_size=None,
+    #                       pin_memory=True)
 
     def on_train_start(self):
         self.model.mark_invisible_cells(self.train_dataset.K.to(self.device),
@@ -185,57 +185,57 @@ class NeRFSystem(LightningModule):
 
         return loss
 
-    def on_validation_start(self):
-        torch.cuda.empty_cache()
-        if not self.hparams.no_save_test:
-            self.val_dir = f'results/{self.hparams.dataset_name}/{self.hparams.exp_name}'
-            os.makedirs(self.val_dir, exist_ok=True)
+    # def on_validation_start(self):
+    #     torch.cuda.empty_cache()
+    #     if not self.hparams.no_save_test:
+    #         self.val_dir = f'results/{self.hparams.dataset_name}/{self.hparams.exp_name}'
+    #         os.makedirs(self.val_dir, exist_ok=True)
 
-    def validation_step(self, batch, batch_nb):
-        rgb_gt = batch['rgb']
-        results = self(batch, split='test')
+    # def validation_step(self, batch, batch_nb):
+    #     rgb_gt = batch['rgb']
+    #     results = self(batch, split='test')
 
-        logs = {}
-        # compute each metric per image
-        self.val_psnr(results['rgb'], rgb_gt)
-        logs['psnr'] = self.val_psnr.compute()
-        self.val_psnr.reset()
+    #     logs = {}
+    #     # compute each metric per image
+    #     self.val_psnr(results['rgb'], rgb_gt)
+    #     logs['psnr'] = self.val_psnr.compute()
+    #     self.val_psnr.reset()
 
-        w, h = self.train_dataset.img_wh
-        rgb_pred = rearrange(results['rgb'], '(h w) c -> 1 c h w', h=h)
-        rgb_gt = rearrange(rgb_gt, '(h w) c -> 1 c h w', h=h)
-        self.val_ssim(rgb_pred, rgb_gt)
-        logs['ssim'] = self.val_ssim.compute()
-        self.val_ssim.reset()
-        if self.hparams.eval_lpips:
-            self.val_lpips(torch.clip(rgb_pred*2-1, -1, 1),
-                           torch.clip(rgb_gt*2-1, -1, 1))
-            logs['lpips'] = self.val_lpips.compute()
-            self.val_lpips.reset()
+    #     w, h = self.train_dataset.img_wh
+    #     rgb_pred = rearrange(results['rgb'], '(h w) c -> 1 c h w', h=h)
+    #     rgb_gt = rearrange(rgb_gt, '(h w) c -> 1 c h w', h=h)
+    #     self.val_ssim(rgb_pred, rgb_gt)
+    #     logs['ssim'] = self.val_ssim.compute()
+    #     self.val_ssim.reset()
+    #     if self.hparams.eval_lpips:
+    #         self.val_lpips(torch.clip(rgb_pred*2-1, -1, 1),
+    #                        torch.clip(rgb_gt*2-1, -1, 1))
+    #         logs['lpips'] = self.val_lpips.compute()
+    #         self.val_lpips.reset()
 
-        if not self.hparams.no_save_test: # save test image to disk
-            idx = batch['img_idxs']
-            rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
-            rgb_pred = (rgb_pred*255).astype(np.uint8)
-            depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
+    #     if not self.hparams.no_save_test: # save test image to disk
+    #         idx = batch['img_idxs']
+    #         rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
+    #         rgb_pred = (rgb_pred*255).astype(np.uint8)
+    #         depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
+    #         imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
+    #         imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
 
-        return logs
+    #     return logs
 
-    def validation_epoch_end(self, outputs):
-        psnrs = torch.stack([x['psnr'] for x in outputs])
-        mean_psnr = all_gather_ddp_if_available(psnrs).mean()
-        self.log('test/psnr', mean_psnr, True)
+    # def validation_epoch_end(self, outputs):
+    #     psnrs = torch.stack([x['psnr'] for x in outputs])
+    #     mean_psnr = all_gather_ddp_if_available(psnrs).mean()
+    #     self.log('test/psnr', mean_psnr, True)
 
-        ssims = torch.stack([x['ssim'] for x in outputs])
-        mean_ssim = all_gather_ddp_if_available(ssims).mean()
-        self.log('test/ssim', mean_ssim)
+    #     ssims = torch.stack([x['ssim'] for x in outputs])
+    #     mean_ssim = all_gather_ddp_if_available(ssims).mean()
+    #     self.log('test/ssim', mean_ssim)
 
-        if self.hparams.eval_lpips:
-            lpipss = torch.stack([x['lpips'] for x in outputs])
-            mean_lpips = all_gather_ddp_if_available(lpipss).mean()
-            self.log('test/lpips_vgg', mean_lpips)
+    #     if self.hparams.eval_lpips:
+    #         lpipss = torch.stack([x['lpips'] for x in outputs])
+    #         mean_lpips = all_gather_ddp_if_available(lpipss).mean()
+    #         self.log('test/lpips_vgg', mean_lpips)
 
     def get_progress_bar_dict(self):
         # don't show the version number
@@ -282,13 +282,13 @@ if __name__ == '__main__':
                       save_poses=hparams.optimize_ext)
         torch.save(ckpt_, f'ckpts/{hparams.dataset_name}/{hparams.exp_name}/epoch={hparams.num_epochs-1}_slim.ckpt')
 
-    if (not hparams.no_save_test) and \
-       hparams.dataset_name=='nsvf' and \
-       'Synthetic' in hparams.root_dir: # save video
-        imgs = sorted(glob.glob(os.path.join(system.val_dir, '*.png')))
-        imageio.mimsave(os.path.join(system.val_dir, 'rgb.mp4'),
-                        [imageio.imread(img) for img in imgs[::2]],
-                        fps=30, macro_block_size=1)
-        imageio.mimsave(os.path.join(system.val_dir, 'depth.mp4'),
-                        [imageio.imread(img) for img in imgs[1::2]],
-                        fps=30, macro_block_size=1)
+    # if (not hparams.no_save_test) and \
+    #    hparams.dataset_name=='nsvf' and \
+    #    'Synthetic' in hparams.root_dir: # save video
+    #     imgs = sorted(glob.glob(os.path.join(system.val_dir, '*.png')))
+    #     imageio.mimsave(os.path.join(system.val_dir, 'rgb.mp4'),
+    #                     [imageio.imread(img) for img in imgs[::2]],
+    #                     fps=30, macro_block_size=1)
+    #     imageio.mimsave(os.path.join(system.val_dir, 'depth.mp4'),
+    #                     [imageio.imread(img) for img in imgs[1::2]],
+    #                     fps=30, macro_block_size=1)
